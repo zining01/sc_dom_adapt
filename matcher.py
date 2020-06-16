@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.linalg import svd
+from scipy.sparse import csr_matrix
 from sklearn.neighbors import NearestNeighbors
 
 class matcher:
@@ -26,14 +27,18 @@ class matcher:
 		X_joint = X @ W1
 		Y_joint = Y @ W2
 
+		# unit normalize vectors
+		X_joint = X_joint / np.linalg.norm(X_joint, axis=1, keepdims=True)
+		Y_joint = Y_joint / np.linalg.norm(Y_joint, axis=1, keepdims=True)
+
 		if self.verbose:
 			print("Initializing ball-tree...")
 
 		# create kNN object
-		X_nn = NearestNeighbors(n_neighbors=self.k, algorithm="ball_tree", metric="euclidean")
+		X_nn = NearestNeighbors(n_neighbors=self.k, metric="cosine")
 		X_nn.fit(X_joint)
 
-		Y_nn = NearestNeighbors(n_neighbors=self.k, algorithm="ball_tree", metric="euclidean")
+		Y_nn = NearestNeighbors(n_neighbors=self.k, metric="cosine")
 		Y_nn.fit(Y_joint)
 
 		if self.verbose:
@@ -65,8 +70,18 @@ class matcher:
 	def optimize(self, X, Y, W1, W2, n_iter=1):
 		"""Alternate between MNN and SVD"""
 
+		# initialize mnn
+		mnn = csr_matrix((X.shape[0], Y.shape[0]))
+
 		for iteration in range(n_iter):
-			mnn = self._compute_dictionary(X, Y, W1, W2)
+			mnn_new = self._compute_dictionary(X, Y, W1, W2)
+
+			# add new MNN (gradually increase the number of dictionary pairs, ideally)
+			#mnn = (mnn + mnn_new > 0).astype(int)
+			mnn = mnn_new
+
+			print("Number of MNN pairs: ", len(mnn.data))
+
 			W1, W2 = self._update_transformation(X, Y, mnn)
 
 		return mnn, W1, W2
@@ -86,10 +101,10 @@ class matcher:
 			print("Initializing ball-tree...")
 
 		# create kNN object
-		X_nn = NearestNeighbors(n_neighbors=k, algorithm="ball_tree", metric="euclidean")
+		X_nn = NearestNeighbors(n_neighbors=k, metric="cosine")
 		X_nn.fit(X_joint)
 
-		Y_nn = NearestNeighbors(n_neighbors=k, algorithm="ball_tree", metric="euclidean")
+		Y_nn = NearestNeighbors(n_neighbors=k, metric="cosine")
 		Y_nn.fit(Y_joint)
 
 		if self.verbose:
